@@ -1,0 +1,127 @@
+import pickle
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import time
+import pandas as pd
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, classification_report
+)
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+
+# Load and filter data
+data_dict = pickle.load(open('./data.pickle', 'rb'))
+raw_data = data_dict['data']
+raw_labels = data_dict['labels']
+
+# Filter invalid samples (only those with 42 features)
+filtered = [(d, l) for d, l in zip(raw_data, raw_labels) if len(d) == 42]
+data, labels = zip(*filtered)
+data = np.asarray(data)
+labels = np.asarray(labels)
+
+# Split data
+x_train, x_test, y_train, y_test = train_test_split(
+    data, labels, test_size=0.2, shuffle=True, stratify=labels
+)
+
+# Define models
+models = {
+    'Random Forest': RandomForestClassifier(),
+    'Logistic Regression': LogisticRegression(max_iter=1000),
+    'SVM': SVC(),
+    'Decision Tree': DecisionTreeClassifier()
+}
+
+# Store metrics
+metrics = {
+    'Accuracy': [],
+    'Precision': [],
+    'Recall': [],
+    'F1 Score': [],
+    'Time (s)': []
+}
+conf_matrices = {}
+reports = {}
+
+# Train and evaluate models
+for name, model in models.items():
+    print(f"\nTraining {name}...")
+    start_time = time.time()
+    model.fit(x_train, y_train)
+    elapsed_time = time.time() - start_time
+
+    y_pred = model.predict(x_test)
+
+    acc = accuracy_score(y_test, y_pred)
+    prec = precision_score(y_test, y_pred, average='macro')
+    rec = recall_score(y_test, y_pred, average='macro')
+    f1 = f1_score(y_test, y_pred, average='macro')
+
+    # Save metrics
+    metrics['Accuracy'].append(acc)
+    metrics['Precision'].append(prec)
+    metrics['Recall'].append(rec)
+    metrics['F1 Score'].append(f1)
+    metrics['Time (s)'].append(elapsed_time)
+
+    # Save confusion matrix and classification report
+    conf_matrices[name] = confusion_matrix(y_test, y_pred)
+    reports[name] = classification_report(y_test, y_pred)
+
+# Convert metrics to DataFrame and save to CSV
+metrics_df = pd.DataFrame(metrics, index=models.keys())
+metrics_df.to_csv('model_comparison.csv')
+print("\nMetrics saved to model_comparison.csv")
+
+# Automatically pick the best model by F1 score
+best_index = np.argmax(metrics['F1 Score'])
+best_model_name = list(models.keys())[best_index]
+best_model = models[best_model_name]
+
+# Save best model
+with open('best_model.p', 'wb') as f:
+    pickle.dump({'model': best_model}, f)
+
+print(f"\n✅ Best model: {best_model_name}")
+print("✅ Model saved as best_model.p")
+
+# Print classification report of best model
+print("\n=== Classification Report ===")
+print(reports[best_model_name])
+
+# Plot performance metrics
+plt.figure(figsize=(12, 6))
+for metric in ['Accuracy', 'Precision', 'Recall', 'F1 Score']:
+    plt.plot(models.keys(), metrics[metric], marker='o', label=metric)
+plt.title('Model Performance Comparison')
+plt.xlabel('Model')
+plt.ylabel('Score')
+plt.ylim(0, 1.05)
+plt.grid(True)
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Plot training times
+plt.figure(figsize=(8, 4))
+plt.bar(models.keys(), metrics['Time (s)'], color='orange')
+plt.title('Training Time per Model')
+plt.ylabel('Time (seconds)')
+plt.tight_layout()
+plt.show()
+
+# Show confusion matrices
+for name, cm in conf_matrices.items():
+    plt.figure(figsize=(6, 5))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title(f'Confusion Matrix - {name}')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.tight_layout()
+    plt.show()

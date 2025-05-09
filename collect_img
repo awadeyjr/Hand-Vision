@@ -1,0 +1,130 @@
+import os
+import cv2
+
+DATA_DIR = './data'
+os.makedirs(DATA_DIR, exist_ok=True)
+
+number_of_classes = 28
+dataset_size     = 500
+
+cap = cv2.VideoCapture(0)
+current_class = None  # track which folder we're writing to
+
+for j in range(number_of_classes):
+
+    current_class = j
+    folder = os.path.join(DATA_DIR, str(current_class))
+    os.makedirs(folder, exist_ok=True)
+
+    existing = len([f for f in os.listdir(folder) if f.lower().endswith('.jpg')])
+    if existing >= dataset_size:
+        print(f'Class {current_class} already complete ({existing}/{dataset_size}), skipping.')
+        continue
+
+    print(f'\n-- Preparing to collect Class {current_class} ({existing}/{dataset_size} images so far)')
+    print('   [Q] Start  [N] Skip  [M] Modify class  [ESC] Exit')
+
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        prompt = f'Class {current_class}: Ready? [Q=start, N=skip, M=modify, ESC=exit]'
+        cv2.putText(frame, prompt, (20,40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv2.LINE_AA)
+        cv2.imshow('Collecting', frame)
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('q'):
+            break
+        elif key == ord('n'):
+            print(f'Skipping class {current_class}.')
+            break
+        elif key == ord('m'):
+            cap.release()
+            cv2.destroyAllWindows()
+
+            new = input(f'Enter new class index (0–{number_of_classes-1}): ')
+            try:
+                new_idx = int(new)
+                if 0 <= new_idx < number_of_classes:
+                    current_class = new_idx
+                    print(f'Will now collect into class {current_class}.')
+                else:
+                    print(f'Invalid index: {new}')
+            except ValueError:
+                print(f'Not a number: {new}')
+
+            cap = cv2.VideoCapture(0)
+            folder = os.path.join(DATA_DIR, str(current_class))
+            os.makedirs(folder, exist_ok=True)
+            existing = len([f for f in os.listdir(folder) if f.lower().endswith('.jpg')])
+            if existing >= dataset_size:
+                print(f'Class {current_class} already complete ({existing}/{dataset_size}), skipping.')
+                key = ord('n')
+                break
+            print(f'Now collecting Class {current_class} ({existing}/{dataset_size} images so far)')
+            print('   [Q] Start  [N] Skip  [M] Modify class  [ESC] Exit')
+        elif key == 28:           # ESC pressed
+            print('Exiting data collection.')
+            cap.release()
+            cv2.destroyAllWindows()
+            exit(0)
+
+
+    if key == ord('n'):
+        continue
+
+
+    counter = existing
+    while counter < dataset_size:
+        ret, frame = cap.read()
+        if not ret:
+            continue
+
+        info = f'Class {current_class}: {counter}/{dataset_size}  [ESC=exit, N=next, M=modify]'
+        cv2.putText(frame, info, (20,40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2, cv2.LINE_AA)
+        cv2.imshow('Collecting', frame)
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == 28:            # ESC → exit all
+            print('Exiting data collection.')
+            cap.release()
+            cv2.destroyAllWindows()
+            exit(0)
+        elif key == ord('n'):    # N → skip to next class
+            print(f'Skipping remainder of class {current_class} at {counter} images.')
+            break
+        elif key == ord('m'):    # M → modify class mid‐capture
+            cap.release()
+            cv2.destroyAllWindows()
+            new = input(f'Enter new class index (0–{number_of_classes-1}): ')
+            try:
+                new_idx = int(new)
+                if 0 <= new_idx < number_of_classes:
+                    current_class = new_idx
+                    print(f'Now switching to class {current_class}.')
+                else:
+                    print(f'Invalid index: {new}')
+                # update folder and counters
+                folder = os.path.join(DATA_DIR, str(current_class))
+                os.makedirs(folder, exist_ok=True)
+                existing = len([f for f in os.listdir(folder) if f.lower().endswith('.jpg')])
+                counter = existing
+                if existing >= dataset_size:
+                    print(f'Class {current_class} already complete ({existing}/{dataset_size}), skipping.')
+                    key = ord('n')
+                    break
+            except ValueError:
+                print(f'Not a number: {new}')
+            cap = cv2.VideoCapture(0)
+            continue
+
+        # save the frame to the (possibly updated) folder
+        cv2.imwrite(os.path.join(folder, f'{counter}.jpg'), frame)
+        counter += 1
+
+    print(f'Finished class {current_class}: {counter}/{dataset_size} images.')
+
+cap.release()
+cv2.destroyAllWindows()

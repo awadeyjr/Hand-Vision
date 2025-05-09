@@ -1,0 +1,105 @@
+import pickle
+import cv2
+import mediapipe as mp
+import numpy as np
+import time
+import pyttsx3
+
+model_dict = pickle.load(open('./best_model.p', 'rb'))
+model = model_dict['model']
+
+cap = cv2.VideoCapture(0)
+
+mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, min_detection_confidence=0.5)
+
+labels_dict = {
+    0: 'A', 1: 'B', 2: 'C', 3: 'D',
+    4: 'F', 5: 'G', 6: 'H', 7: 'I',
+    8: 'K', 9: 'L', 10: 'M', 11: 'N', 12: 'O',
+    13: 'P', 14: 'Q', 15: 'R', 16: 'S', 17: 'T',
+    18: 'U', 19: 'V', 20: 'W', 21: 'X', 22: 'Y',
+    23: 'Like', 24: 'Dislike', 25: 'E', 26: 'Space',
+    27: 'del'
+}
+
+current_letter = ""
+last_letter = ""
+word = ""
+last_time = time.time()
+letter_delay = 1.0
+
+engine = pyttsx3.init()
+
+while True:
+    data_aux = []
+    x_ = []
+    y_ = []
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    H, W, _ = frame.shape
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    results = hands.process(rgb)
+
+    if results.multi_hand_landmarks:
+        for hand_landmarks in results.multi_hand_landmarks:
+            mp_drawing.draw_landmarks(
+                frame,
+                hand_landmarks,
+                mp_hands.HAND_CONNECTIONS,
+                mp_drawing_styles.get_default_hand_landmarks_style(),
+                mp_drawing_styles.get_default_hand_connections_style()
+            )
+
+            landmarks = [(lm.x, lm.y) for lm in hand_landmarks.landmark]
+            x_, y_ = zip(*landmarks)
+
+            for x, y in landmarks:
+                data_aux.append(x - min(x_))
+                data_aux.append(y - min(y_))
+
+            x1 = int(min(x_) * W) - 10
+            y1 = int(min(y_) * H) - 10
+            x2 = int(max(x_) * W) + 10
+            y2 = int(max(y_) * H) + 10
+
+            prediction = model.predict([np.asarray(data_aux)])
+            pc = labels_dict[int(prediction[0])]
+
+            if pc != last_letter:
+                last_time = time.time()
+                last_letter = pc
+            else:
+                if time.time() - last_time > letter_delay:
+                    current_letter = pc
+                    if current_letter not in ['Like', 'del', 'Space']:
+                        word += current_letter
+                    elif current_letter == 'Like':
+                        print("Final word:", word)
+                        engine.say(word)
+                        engine.runAndWait()
+                        word = ""
+                    elif current_letter == 'del':
+                        word = word[:-1]
+                    elif current_letter == 'Space':
+                        word += ' '
+                    last_time = time.time()
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 0, 0), 4)
+            cv2.putText(frame, pc, (x1, y1 - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 0, 0), 3)
+
+    cv2.putText(frame, word, (10, 70),
+                cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
+
+
+    cv2.imshow('ASL Gesture Recognition', frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
